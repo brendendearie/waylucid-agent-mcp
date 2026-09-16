@@ -1,0 +1,62 @@
+{
+  "name": "waylucid-agent-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sanitized public reference for permission-aware MCP tools, an agent harness, and CI evals. Not a dump of proprietary WayLucid code.",
+  "type": "module",
+  "packageManager": "pnpm@10.33.3",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "mcp": "tsx src/mcp/stdio.ts",
+    "tools": "tsx src/harness/cli.ts --list-tools",
+    "agent": "tsx src/harness/cli.ts",
+    "eval": "tsx src/eval/cli.ts",
+    "playground": "tsx src/web/server.ts",
+    "start": "tsx src/web/server.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "bin": {
+    "waylucid-mcp": "./src/mcp/stdio.ts",
+    "waylucid-agent": "./src/harness/cli.ts"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "agents",
+    "typescript",
+    "eval"
+  ],
+  "author": "Brenden Dearie",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/brendendearie/waylucid-agent-mcp.git"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.5.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.0"
+  }
+}
