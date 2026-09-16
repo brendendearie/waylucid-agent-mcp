@@ -13,7 +13,6 @@ This is a **public reference**, not a product dump. Keep it small enough that a 
 
 - Proprietary LucidDock / WayLucid production code
 - Real customer data, tokens, or partner names
-- Inflated metrics, bankruptcy/exit narrative, or invented integrations
 - A second ontology, a second agent framework, or a database
 
 ## How to work
