@@ -1,25 +1,26 @@
 #!/usr/bin/env tsx
-import { GOLDEN, runGoldenSet } from "./run.ts";
+import { runGoldenSet } from "./run.ts";
 
 async function main(): Promise<void> {
-  const { passed, failed, results } = await runGoldenSet();
-  console.log(`waylucid eval  ·  ${passed}/${results.length} passed\n`);
-  for (const result of results) {
-    const mark = result.pass ? "PASS" : "FAIL";
-    console.log(`${mark}  ${result.id}  —  ${result.title}`);
-    if (!result.pass) {
-      for (const check of result.checks.filter((row) => !row.pass)) {
-        console.log(`      ${check.check.kind}: ${check.detail}`);
-      }
+  const args = process.argv.slice(2).filter((arg) => arg !== "--");
+  if (args.some((arg) => arg !== "--json")) throw new Error("Usage: pnpm eval [--json]");
+  const report = await runGoldenSet();
+  if (args.includes("--json")) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(`waylucid deterministic regression · ${report.passed}/${report.total} passed\n`);
+    console.log(`${report.scope}\n`);
+    for (const result of report.results) {
+      console.log(`${result.pass ? "PASS" : "FAIL"}  ${result.id} — ${result.title}`);
+      if (result.error) console.log(`      execution: ${result.error}`);
+      for (const check of result.checks.filter((row) => !row.pass)) console.log(`      ${check.check.kind}: ${check.detail}`);
     }
+    console.log(`\n${report.checks.passed}/${report.checks.total} assertions passed.`);
   }
-  if (failed > 0) {
-    console.error(`\n${failed} golden case(s) failed. ${GOLDEN.length} in the set.`);
-    process.exit(1);
-  }
+  if (report.failed > 0) process.exitCode = 1;
 }
 
 main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.stack ?? error.message : error);
-  process.exit(1);
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
 });

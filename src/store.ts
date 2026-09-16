@@ -1,4 +1,6 @@
 import { redactCase, SEED_CASES, SEED_CONTACTS, SEED_TASKS } from "./seed.ts";
+import { PRINCIPALS } from "./auth.ts";
+import { iso } from "zod/v4";
 import type {
   CaseRecord,
   CaseStatus,
@@ -27,6 +29,16 @@ export class ConflictError extends Error {
     this.name = "ConflictError";
   }
 }
+
+export class ValidationError extends Error {
+  readonly code = "VALIDATION" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
+
+export const dueAtSchema = iso.datetime({ offset: true });
 
 export type CreateCaseInput = {
   contactId: string;
@@ -171,6 +183,9 @@ export class OpsStore {
     if (row.status === "resolved") {
       throw new ConflictError("resolved cases cannot be reassigned");
     }
+    if (!Object.values(PRINCIPALS).some((principal) => principal.id === assigneeId)) {
+      throw new NotFoundError("principal", assigneeId);
+    }
     row.assigneeId = assigneeId;
     row.updatedAt = this.stamp();
     return cloneCase(row);
@@ -217,6 +232,9 @@ export class OpsStore {
 
   createTask(input: CreateTaskInput): TaskRecord {
     this.getCase(input.caseId);
+    if (input.dueAt != null && !dueAtSchema.safeParse(input.dueAt).success) {
+      throw new ValidationError("dueAt must be a valid ISO-8601 timestamp with a timezone");
+    }
     const createdAt = this.stamp();
     const row: TaskRecord = {
       id: this.next("tk"),

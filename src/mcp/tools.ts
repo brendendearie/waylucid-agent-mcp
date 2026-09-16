@@ -3,7 +3,7 @@ import * as z from "zod/v4";
 import { advertisedTools, can, PRINCIPALS } from "../auth.ts";
 import type { Role } from "../ontology.ts";
 import { CASE_STATUSES, CONTACT_STATUSES, PRIORITIES, TASK_STATUSES } from "../ontology.ts";
-import { ConflictError, NotFoundError, type OpsStore } from "../store.ts";
+import { ConflictError, NotFoundError, dueAtSchema, type OpsStore } from "../store.ts";
 import { fail, fromUnknown, ok } from "./result.ts";
 
 const prioritySchema = z.enum(PRIORITIES);
@@ -12,17 +12,17 @@ const taskStatusSchema = z.enum(TASK_STATUSES);
 const contactStatusSchema = z.enum(CONTACT_STATUSES);
 
 function operatorCaseUpdateSchema() {
-  return z.object({
+  return z.strictObject({
     case_id: z.string().describe("Case id, for example cs_webhook"),
-    title: z.string().min(3).optional(),
-    description: z.string().min(3).optional(),
+    title: z.string().trim().min(3).max(10_000).optional(),
+    description: z.string().trim().min(3).max(10_000).optional(),
     priority: prioritySchema.optional(),
   });
 }
 
 function supervisorCaseUpdateSchema() {
   return operatorCaseUpdateSchema().extend({
-    tags: z.array(z.string()).optional().describe("Replace the case tag list"),
+    tags: z.array(z.string().trim().min(1).max(64)).max(20).optional().describe("Replace the case tag list"),
   });
 }
 
@@ -35,12 +35,13 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
       {
         title: "Who am I",
         description:
-          "Return the connected Harborline principal, role, and the tool names this role may call. Call this first.",
+          "Return the connected Harborline principal, role, and the tool names this role may call.",
         annotations: { readOnlyHint: true, idempotentHint: true },
-        outputSchema: z.object({
+        inputSchema: z.strictObject({}),
+        outputSchema: z.strictObject({
           ok: z.literal(true),
-          data: z.object({
-            principal: z.object({
+          data: z.strictObject({
+            principal: z.strictObject({
               id: z.string(),
               name: z.string(),
               email: z.string(),
@@ -56,8 +57,8 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
           principal: PRINCIPALS[role],
           advertised_tools: advertisedTools(role),
           notes: [
-            "Tool schemas are narrowed to this role. Fields you do not see cannot be planned.",
-            "The server also enforces the same matrix if a caller bypasses listTools.",
+            "Tool schemas are narrowed to this role. Unknown input fields are rejected before mutation.",
+            "Disallowed tools are not registered, so direct calls are rejected too.",
             "Internal notes on cases are only present for supervisors.",
           ],
         }),
@@ -71,7 +72,7 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
         title: "List contacts",
         description: "Search Harborline contacts by name, email, company, or id.",
         annotations: { readOnlyHint: true, idempotentHint: true },
-        inputSchema: z.object({
+        inputSchema: z.strictObject({
           query: z.string().optional().describe("Optional substring match"),
         }),
       },
@@ -86,7 +87,7 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
         title: "Get contact",
         description: "Fetch one contact by id.",
         annotations: { readOnlyHint: true, idempotentHint: true },
-        inputSchema: z.object({
+        inputSchema: z.strictObject({
           contact_id: z.string(),
         }),
       },
@@ -107,8 +108,8 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
         title: "Update contact status",
         description:
           "Pause or reactivate a contact. Supervisor only. Operators cannot freeze an account from the tool catalog.",
-        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
-        inputSchema: z.object({
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+        inputSchema: z.strictObject({
           contact_id: z.string(),
           status: contactStatusSchema,
         }),
@@ -130,7 +131,7 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
         title: "List cases",
         description: "List ops cases, optionally filtered by status or contact.",
         annotations: { readOnlyHint: true, idempotentHint: true },
-        inputSchema: z.object({
+        inputSchema: z.strictObject({
           status: caseStatusSchema.optional(),
           contact_id: z.string().optional(),
         }),
@@ -150,7 +151,7 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
         description:
           "Fetch one case. Supervisors see internal notes. Other roles receive hiddenInternalNoteCount instead of the note bodies.",
         annotations: { readOnlyHint: true, idempotentHint: true },
-        inputSchema: z.object({
+        inputSchema: z.strictObject({
           case_id: z.string(),
         }),
       },
@@ -171,10 +172,10 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
         title: "Create case",
         description: "Open a new case on a contact. Starts as open, unassigned.",
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
-        inputSchema: z.object({
+        inputSchema: z.strictObject({
           contact_id: z.string(),
-          title: z.string().min(3),
-          description: z.string().min(3),
+          title: z.string().trim().min(3).max(10_000),
+          description: z.string().trim().min(3).max(10_000),
           priority: prioritySchema.default("p2"),
         }),
       },
@@ -201,7 +202,7 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
         {
           title: "Update case",
           description: "Update case fields including tags. Assignment and resolve are separate tools.",
-          annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+          annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
           inputSchema: supervisorCaseUpdateSchema(),
         },
         async ({ case_id, title, description, priority, tags }) => {
@@ -219,7 +220,7 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
         {
           title: "Update case",
           description: "Update title, description, or priority. This role cannot set tags, assignee, or resolution.",
-          annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+          annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
           inputSchema: operatorCaseUpdateSchema(),
         },
         async ({ case_id, title, description, priority }) => {
@@ -240,8 +241,8 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
       {
         title: "Assign case",
         description: "Set the case assignee. Supervisor only. Resolved cases cannot be reassigned.",
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-        inputSchema: z.object({
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+        inputSchema: z.strictObject({
           case_id: z.string(),
           assignee_id: z.string().describe("Principal id such as pr_supervisor or pr_operator"),
         }),
@@ -265,10 +266,10 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
         title: "Resolve case",
         description: "Close a case with a resolution code and customer-safe summary. Supervisor only.",
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
-        inputSchema: z.object({
+        inputSchema: z.strictObject({
           case_id: z.string(),
           resolution_code: z.string().min(2),
-          resolution_summary: z.string().min(3),
+          resolution_summary: z.string().trim().min(3).max(10_000),
         }),
       },
       async ({ case_id, resolution_code, resolution_summary }) => {
@@ -291,9 +292,9 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
         description:
           "Attach a note that must not be shown to the customer. Supervisor only. Operators reading the case will only see a hidden-note count.",
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
-        inputSchema: z.object({
+        inputSchema: z.strictObject({
           case_id: z.string(),
-          body: z.string().min(3),
+          body: z.string().trim().min(3).max(10_000),
         }),
       },
       async ({ case_id, body }) => {
@@ -314,7 +315,7 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
         title: "List tasks",
         description: "List follow-up tasks, optionally filtered by status or case.",
         annotations: { readOnlyHint: true, idempotentHint: true },
-        inputSchema: z.object({
+        inputSchema: z.strictObject({
           status: taskStatusSchema.optional(),
           case_id: z.string().optional(),
         }),
@@ -330,7 +331,7 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
         title: "Get task",
         description: "Fetch one task by id.",
         annotations: { readOnlyHint: true, idempotentHint: true },
-        inputSchema: z.object({
+        inputSchema: z.strictObject({
           task_id: z.string(),
         }),
       },
@@ -351,10 +352,10 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
         title: "Create task",
         description: "Create a follow-up task on an existing case.",
         annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
-        inputSchema: z.object({
+        inputSchema: z.strictObject({
           case_id: z.string(),
-          title: z.string().min(3),
-          due_at: z.string().optional().describe("ISO-8601 timestamp"),
+          title: z.string().trim().min(3).max(10_000),
+          due_at: dueAtSchema.optional().describe("ISO-8601 timestamp with a timezone"),
         }),
       },
       async ({ case_id, title, due_at }) => {
@@ -373,8 +374,8 @@ export function registerTools(server: McpServer, store: OpsStore, role: Role): v
       {
         title: "Complete task",
         description: "Mark a task done.",
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-        inputSchema: z.object({
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+        inputSchema: z.strictObject({
           task_id: z.string(),
         }),
       },

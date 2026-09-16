@@ -21,3 +21,6 @@ playwright-report/
 test-results/
 agent-tools/
 REBUILD-STATUS.md
+eval-report.json
+test-results.xml
+output/playwright/

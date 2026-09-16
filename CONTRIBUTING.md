@@ -2,23 +2,14 @@
 
 Keep this repo small enough that someone can read the MCP tool layer in one sitting.
 
-## What belongs here
+Use fictional data only.
 
-- Clearer permission-aware schemas
-- Better golden evals that fail when the catalog leaks
-- Harness / playground fixes that make the demo more honest
-- Dependency and SDK upgrades for `@modelcontextprotocol/server` and `@modelcontextprotocol/client`
+1. Install the pinned pnpm version and run `pnpm install --frozen-lockfile`.
+2. Reproduce bugs with failing tests, or state new behavior explicitly.
+3. For writes, assert final state as well as the returned result. For denials, assert unchanged state.
+4. Run `pnpm check`. Review both successful and rejected paths.
+5. Keep documentation claims aligned with executable evidence.
 
-## What does not
+Do not commit credentials, real customer records, or invented performance claims. Never fix a test by silently broadening a role. New dependencies require a reason; preserve the release-age policy and explicit build-script allowlist.
 
-- Real customer data, tokens, or partner names
-- A second ontology, a second agent framework, or a database
-
-## How to work
-
-1. `pnpm install`
-2. `pnpm test` and `pnpm eval` must stay green
-3. Prefer one complete idea per PR
-4. Match the existing TypeScript style: ESM, strict, no unused locals
-
-Harborline is fictional seed data. Keep it that way.
+Changes to roles, schemas, redaction, transports, or plan execution should include a negative regression test. CI must run without model-provider secrets. Live-provider experiments need separate, clearly labeled results.

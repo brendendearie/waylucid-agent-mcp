@@ -61,11 +61,20 @@ export const PRINCIPALS: Record<Role, Principal> = {
   },
 };
 
-export function parseRole(value: string | undefined | null): Role {
+export class InvalidRoleError extends Error {
+  readonly code = "VALIDATION" as const;
+  constructor() {
+    super("role must be viewer, operator, or supervisor");
+    this.name = "InvalidRoleError";
+  }
+}
+
+export function parseRole(value: unknown, fallback: Role = "operator"): Role {
+  if (value === undefined || value === null) return fallback;
   if (value === "viewer" || value === "operator" || value === "supervisor") {
     return value;
   }
-  return "operator";
+  throw new InvalidRoleError();
 }
 
 export function advertisedTools(role: Role): ToolName[] {

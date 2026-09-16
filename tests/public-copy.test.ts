@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const ROOT = join(import.meta.dirname, "..");
-const ROOTS = ["README.md", "CONTRIBUTING.md", "package.json", "playground", "src"];
+const ROOTS = ["README.md", "CONTRIBUTING.md", "package.json", "playground", "src", "docs"];
 
 /** Phrases that belong in an unpublished brief, not on a public GitHub page. */
 const FORBIDDEN = [
@@ -29,7 +29,7 @@ function walk(path: string, files: string[]): void {
 }
 
 describe("public copy", () => {
-  it("does not ship unpublished-brief language in README, CONTRIBUTING, package, playground, or src", () => {
+  it("does not ship unpublished-brief language in README, CONTRIBUTING, package, playground, src, or docs", () => {
     const files: string[] = [];
     for (const name of ROOTS) walk(join(ROOT, name), files);
     const hits: string[] = [];

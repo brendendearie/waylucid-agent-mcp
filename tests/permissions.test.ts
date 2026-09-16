@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { advertisedTools, can, parseRole } from "../src/auth.ts";
 
 describe("permission matrix", () => {
-  it("defaults unknown roles to operator", () => {
-    expect(parseRole("intern")).toBe("operator");
+  it("rejects unknown roles while preserving the local CLI default", () => {
+    expect(() => parseRole("intern")).toThrow();
     expect(parseRole(undefined)).toBe("operator");
   });
 

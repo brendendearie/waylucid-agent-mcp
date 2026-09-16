@@ -7,6 +7,7 @@ type Tool = {
   title?: string;
   description?: string;
   annotations?: Record<string, unknown>;
+  inputSchema?: unknown;
 };
 
 type Catalog = {
@@ -41,6 +42,8 @@ type Trace = {
     text: string;
   }>;
   denied: string[];
+  outcome: "completed" | "blocked" | "failed";
+  issue?: { code: string; message: string };
 };
 
 type EvalReport = {
@@ -116,7 +119,7 @@ export default function App() {
     setError(null);
     setTrace(null);
     try {
-      const body = await fetch("/api/reset", { method: "POST" }).then(async (response) => {
+      const body = await fetch(`/api/reset?role=${role}`, { method: "POST" }).then(async (response) => {
         if (!response.ok) throw new Error("reset failed");
         return (await response.json()) as { desk: Desk };
       });
@@ -152,8 +155,8 @@ export default function App() {
           <p className="font-mono text-[11px] tracking-[0.28em] text-amber uppercase">WayLucid · Harborline</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">Harborline ops desk</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-mute">
-            Permission-aware MCP tools for contacts, cases, and tasks. Switch roles. The catalog changes. The server
-            still enforces the matrix. Harborline is fictional seed data.
+            Permission-aware MCP tools for contacts, cases, and tasks. Inspect the contract, run a plan, and see
+            where execution stops. Fictional data · local role simulator · no authentication.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -161,7 +164,16 @@ export default function App() {
             <button
               key={value}
               type="button"
-              onClick={() => setRole(value)}
+              disabled={busy !== null}
+              aria-pressed={role === value}
+              onClick={() => {
+                if (value === role) return;
+                setBusy("catalog");
+                setCatalog(null);
+                setDesk(null);
+                setTrace(null);
+                setRole(value);
+              }}
               className={`rounded-full border px-3 py-1.5 font-mono text-xs capitalize ${
                 role === value
                   ? "border-amber bg-amber/15 text-amber"
@@ -178,7 +190,7 @@ export default function App() {
         <div className="mb-4 rounded-xl border border-rose/40 bg-rose/10 px-4 py-3 text-sm text-rose">{error}</div>
       ) : null}
 
-      <section className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.9fr)]">
+      <section className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.9fr)]">
         <Panel title="Advertised tools" kicker={catalog ? `${catalog.tools.length} for ${role}` : "loading"}>
           {busy === "catalog" && !catalog ? (
             <p className="text-sm text-mute">Loading catalog…</p>
@@ -191,6 +203,10 @@ export default function App() {
                     <Hint annotations={tool.annotations} />
                   </div>
                   <p className="mt-1 text-xs leading-5 text-mute">{tool.description}</p>
+                  <details className="mt-2 text-xs text-mute">
+                    <summary className="cursor-pointer font-mono">Input contract</summary>
+                    <pre className="mt-2 max-h-52 overflow-auto text-[11px]">{JSON.stringify(tool.inputSchema, null, 2)}</pre>
+                  </details>
                 </li>
               ))}
             </ul>
@@ -202,9 +218,10 @@ export default function App() {
           )}
         </Panel>
 
-        <Panel title="Agent harness" kicker="mock planner · optional live LLM via env">
-          <label className="mb-2 block font-mono text-[11px] tracking-wide text-mute uppercase">Utterance</label>
+        <Panel title="Agent harness" kicker="deterministic demo grammar">
+          <label htmlFor="utterance" className="mb-2 block font-mono text-[11px] tracking-wide text-mute uppercase">Utterance</label>
           <textarea
+            id="utterance"
             value={utterance}
             onChange={(event) => setUtterance(event.target.value)}
             rows={4}
@@ -222,27 +239,41 @@ export default function App() {
             <button
               type="button"
               onClick={() => setUtterance(DEMO)}
+              disabled={busy !== null}
               className="rounded-lg border border-line px-3 py-2 text-sm text-paper hover:border-mute"
             >
               Load demo
             </button>
             <button
               type="button"
-              onClick={() => void reset()}
+              onClick={() => setUtterance("list follow-up tasks")}
               disabled={busy !== null}
+              className="rounded-lg border border-line px-3 py-2 text-sm text-paper hover:border-mute"
+            >
+              Read-only probe
+            </button>
+            <button
+              type="button"
+              onClick={() => void reset()}
+              disabled={busy !== null || role !== "supervisor"}
+              title={role !== "supervisor" ? "Select supervisor to reset the fictional desk" : "Reset fictional seed data"}
               className="rounded-lg border border-line px-3 py-2 text-sm text-mute hover:border-mute"
             >
-              Reset seed
+              Reset seed (supervisor)
             </button>
           </div>
 
           {!trace ? (
             <Empty
               title="No transcript yet"
-              body="Run the demo as operator: list Maya, open a P1 case, create a follow-up. Then switch to viewer and try the same utterance — create disappears from the plan."
+              body="Run as operator to create a case and follow-up. Switch to viewer to see the same workflow blocked. The read-only probe must never create a task."
             />
           ) : (
             <div className="mt-4 space-y-3">
+              <div role="status" className={`rounded-lg border px-3 py-2 ${trace.outcome === "completed" ? "border-mint/30 text-mint" : "border-rose/30 text-rose"}`}>
+                <p className="font-mono text-xs uppercase">{trace.outcome} · {trace.steps.length} executed / {trace.plan.calls.length} planned</p>
+                {trace.issue ? <p className="mt-1 text-xs leading-5">{trace.issue.code}: {trace.issue.message}</p> : null}
+              </div>
               <p className="text-sm leading-6 text-mute">{trace.plan.rationale}</p>
               {trace.denied.length > 0 ? (
                 <p className="font-mono text-xs text-rose">Denied (not advertised): {trace.denied.join(", ")}</p>
@@ -264,7 +295,7 @@ export default function App() {
           )}
         </Panel>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <Panel title="Desk snapshot" kicker={catalog?.principal.name ?? "—"}>
             {!desk ? (
               <p className="text-sm text-mute">Loading seed data…</p>
@@ -311,7 +342,7 @@ export default function App() {
             )}
           </Panel>
 
-          <Panel title="CI evals" kicker={evalReport ? `${evalReport.passed}/${evalReport.passed + evalReport.failed} passed` : "not run"}>
+          <Panel title="Regression evals" kicker={evalReport ? `${evalReport.passed}/${evalReport.passed + evalReport.failed} passed` : "not run"}>
             <button
               type="button"
               onClick={() => void runEval()}
@@ -322,8 +353,8 @@ export default function App() {
             </button>
             {!evalReport ? (
               <Empty
-                title="Gate the agent in CI"
-                body="pnpm eval runs the same fixtures. Catalog leaks, plan drops, redacted notes, and structured NOT_FOUND all have to stay green."
+                title="Repeatable behavioral checks"
+                body="pnpm eval runs the same deterministic fixtures. This is regression evidence, not an LLM accuracy benchmark."
               />
             ) : (
               <ul className="mt-3 space-y-1">
@@ -358,8 +389,8 @@ function Panel({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-line bg-panel/80 p-4 shadow-[0_0_0_1px_rgba(232,165,75,0.04)]">
-      <div className="mb-3 flex items-baseline justify-between gap-3">
+    <section className="min-w-0 rounded-2xl border border-line bg-panel/80 p-4 shadow-[0_0_0_1px_rgba(232,165,75,0.04)]">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
         <h2 className="text-base font-semibold">{title}</h2>
         <span className="font-mono text-[11px] text-mute">{kicker}</span>
       </div>
