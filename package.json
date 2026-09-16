@@ -2,7 +2,7 @@
   "name": "waylucid-agent-mcp",
   "version": "0.1.0",
   "private": true,
-  "description": "Permission-aware MCP tools, an agent harness, and CI evals for an ops desk (Harborline demo).",
+  "description": "Permission-aware MCP server and agent harness with role-scoped tools, whole-plan validation, deterministic evals, and a React playground.",
   "type": "module",
   "packageManager": "pnpm@11.19.0",
   "engines": {
@@ -28,8 +28,13 @@
   },
   "keywords": [
     "mcp",
+    "mcp-server",
     "model-context-protocol",
     "agents",
+    "ai-agents",
+    "rbac",
+    "security",
+    "react",
     "typescript",
     "eval"
   ],
