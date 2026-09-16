@@ -1,152 +1,134 @@
-# waylucid-agent-mcp
+# WayLucid Agent MCP
 
-Permission-aware MCP tools, a small agent harness, and CI evals for an ops desk.
+**An executable reference for agents that know their permissions—and stop when a plan is unsafe to execute.**
 
-Harborline is fictional seed data. The point is the shape: discover an ontology, ship it as MCP tools the model can actually see, and productize the boundary with evals.
+Harborline is a fictional operations desk with contacts, cases, and tasks. Switch between viewer, operator, and supervisor: the MCP tool catalog changes, writable fields narrow, and internal notes are redacted. A small agent harness validates plans against that catalog before execution.
 
-Built by **Brenden Dearie**.
+Built by [Brenden Dearie](https://github.com/brendendearie). TypeScript · MCP v2 · React · deterministic regression evals.
 
-## Start here
+![Actual local playground: operator tool contracts, completed three-step workflow, and 18 passing regression fixtures](docs/assets/harborline-demo.png)
 
-1. **`src/mcp/tools.ts`** — tools are the product surface. The catalog is role-gated. `cases.update` is a *different schema* for operator vs supervisor, so the model cannot plan a field it is not allowed to send. The handler still enforces the matrix.
-2. **`src/auth.ts` + `src/seed.ts`** — contacts / cases / tasks, plus data-plane redaction: operators get `hiddenInternalNoteCount`, supervisors get the note body.
-3. **`src/eval/run.ts`** — a golden set that fails if a write leaks into the viewer catalog, if the demo path stops creating a P1 case, or if internal notes spill.
-4. Run `pnpm agent --demo` then `pnpm eval`. That is the whole loop.
+## Run it in five minutes
 
-Quick check: switch the playground role from operator to viewer and run the same utterance. Create disappears from the plan.
+Requires **Node 22.12+ on the 22.x line, or Node 24.x**, and **pnpm 11.19.0** (pinned in `package.json`). No database, account, or API key needed.
 
-## Discovery → ship → productize
+```sh
+git clone https://github.com/brendendearie/waylucid-agent-mcp.git
+cd waylucid-agent-mcp
+pnpm install --frozen-lockfile
+pnpm check
+pnpm playground
+```
+
+Open **http://127.0.0.1:43123**. Run the operator demo, switch to viewer and try it again, then try `list follow-up tasks`. The last prompt must only read the desk.
+
+The playground is a **local role simulator, not an authentication system**. Do not expose it to the internet or load real customer records. [Security boundaries](docs/SECURITY.md).
+
+## The engineering question
+
+An agent can be authorized to create a case and still be wrong to create one. This reference treats these as separate checks:
 
 ```mermaid
 flowchart LR
-  D["Discover<br/>ontology + permissions"] --> S["Ship<br/>MCP tools + schemas"]
-  S --> P["Productize<br/>harness + golden evals"]
-  P --> D
+  U[Request] --> P[Bounded mock or opt-in LLM plan]
+  P --> V[Validate entire plan against role catalog]
+  V --> B[For each call: resolve unambiguous bindings]
+  B --> M[MCP dispatch and strict input validation]
+  M --> S[In-memory store]
+  S --> R[Role-redacted result and execution trace]
+  R -->|next call| B
+  M -->|error| H[Stop remaining steps]
+  V -->|invalid or forbidden| H
+  B -->|missing or ambiguous| H
 ```
 
-| Stage | What we actually did here |
-| --- | --- |
-| **Discover** | Three objects an ops desk already has: contacts, cases, tasks. Three roles: viewer, operator, supervisor. Write down what each role must *never* do — assign, resolve, freeze an account, read internal notes — before writing a tool. |
-| **Ship** | A TypeScript MCP server (`@modelcontextprotocol/server` v2) that advertises a coherent toolset over stdio and Streamable HTTP. Schemas are narrowed per role. Resources expose `ops://desk/whoami` and the catalog. Backing store is in-memory so this repo runs without a database or a paid API. |
-| **Productize** | A harness that plans against the *advertised* catalog, not against a hidden admin API. A golden eval script that belongs in CI. A playground so you can exercise the desk without wiring Cursor or Claude Desktop first. |
+| Boundary | Implementation | Evidence |
+| --- | --- | --- |
+| What the agent can discover | Role-specific tool registration | Catalog and direct forbidden-call tests |
+| What fields it can submit | Strict schemas; supervisor-only `tags` on `cases.update` | Unauthorized fields fail without changing state |
+| What it can read | Note-body redaction in tools and snapshots | Viewer/operator redaction tests |
+| Whether a plan is executable | Whole-plan validation, exact-one bindings, stop-on-error | Malformed-plan, ambiguity, dependency and no-write regressions |
+| Whether the demo stays local | Loopback binding, Host/Origin checks, bounded request bodies | Real HTTP boundary tests |
 
-The interesting failure mode for agent products is not “the model can’t call tools.” It is “the model planned a privileged write because the tool list lied.” This repo treats that as the product bug.
+Schemas help a model choose valid actions; they cannot prevent a model from inventing a forbidden call. Enforcement belongs on the server. Tool annotations are hints, not approval controls.
 
-## Architecture
+## Try the boundary
 
-```mermaid
-flowchart TB
-  subgraph hosts [Hosts]
-    CLI["CLI harness<br/>pnpm agent"]
-    UI["Playground<br/>pnpm playground"]
-    CI["Golden evals<br/>pnpm eval"]
-  end
+```sh
+# Expected: one P1 case and one linked follow-up task.
+pnpm agent --demo
 
-  subgraph mcp [MCP server]
-    Factory["createOpsServer(role)"]
-    Tools["Role-gated tools<br/>+ narrowed input schemas"]
-    Resources["ops://desk/*"]
-  end
+# Machine-readable trace; blocked and failed workflows still exit nonzero.
+pnpm agent --demo --json
 
-  subgraph desk [Harborline desk]
-    Store["In-memory OpsStore"]
-    Seed["Fictional contacts / cases / tasks"]
-  end
+# Expected: blocked; no part of the write workflow executes. Exits nonzero.
+pnpm agent --role viewer --demo
 
-  CLI -->|stdio or in-process HTTP| Factory
-  UI -->|REST + /mcp| Factory
-  CI -->|in-process Client| Factory
-  Factory --> Tools
-  Factory --> Resources
-  Tools --> Store
-  Resources --> Store
-  Store --> Seed
+# Expected: read-only, even though "follow-up" appears in the request.
+pnpm agent "list follow-up tasks"
+
+# Expected: blocked and unchanged state. Exits nonzero.
+pnpm agent "Do not open a case for Maya"
+
+# Catalogs, successful workflows, negative cases, and state invariants.
+pnpm eval
+pnpm eval --json
 ```
 
-Stdio is what Cursor / Claude Desktop / MCP Inspector spawn. The harness tests use `createMcpHandler` + `StreamableHTTPClientTransport` with `fetch` pointed at the handler — no socket, same factory you would deploy.
+Use `pnpm agent --help` for supported options. Unknown, duplicate, or conflicting options are rejected before execution; there is no `--dry-run` flag. Use the read-only viewer role or inspect a catalog with `pnpm tools --role viewer --json` when exploring.
+
+See the [demo walkthrough](docs/DEMO.md) for a short screen-share script and the [design decisions](docs/DESIGN.md) for tradeoffs and production gaps.
 
 ## Permission matrix
 
-| Tool | viewer | operator | supervisor |
-| --- | --- | --- | --- |
-| `whoami`, `*.list`, `*.get` | yes | yes | yes |
-| `cases.create`, `cases.update`*, `tasks.create`, `tasks.complete` | — | yes | yes |
-| `cases.assign`, `cases.resolve`, `cases.add_internal_note`, `contacts.update_status` | — | — | yes |
-| Internal note bodies on `cases.get` | hidden | hidden | visible |
+| Capability | Viewer | Operator | Supervisor |
+| --- | :---: | :---: | :---: |
+| `whoami`, contact/case/task reads | ✓ | ✓ | ✓ |
+| Create cases/tasks; complete tasks | — | ✓ | ✓ |
+| Update case title, description, priority | — | ✓ | ✓ |
+| Update case tags | — | — | ✓ |
+| Assign/resolve cases; add internal notes; change contact status | — | — | ✓ |
+| Read internal note bodies | — | — | ✓ |
+| Reset the demo desk | — | — | ✓ |
 
-\*Operator `cases.update` accepts `title` / `description` / `priority`. Supervisor `cases.update` also accepts `tags`. Assignment and resolve stay on their own tools so a host can attach a confirmation to the destructive ones (`destructiveHint` is set).
+All data is shared within one playground process and disappears when it stops. Separate CLI runs start from the seed.
 
-The server never relies on the client to filter. If a viewer calls `cases.create` anyway, the tool is not registered on that session and MCP returns a protocol-level "not found" — the model never gets a successful write.
+## Verification you can reproduce
 
-## How to run locally
-
-Node 20+ (22 is what CI uses). pnpm preferred; npm works.
-
-```bash
-pnpm install          # or npm install
-pnpm tools            # start the MCP factory, list the operator catalog, exit
-pnpm agent --demo     # list Maya → open P1 case → create follow-up
-pnpm eval             # golden set; exit 0 when green
-pnpm test             # vitest, including the golden set
-pnpm playground       # http://127.0.0.1:43123
+```sh
+pnpm typecheck
+pnpm test       # includes an actual stdio client/server round trip
+pnpm eval       # deterministic mock-planner regression fixtures
+pnpm build      # compile the playground assets
 ```
 
-Role is `--role viewer|operator|supervisor` or `WAYLUCID_ROLE`.
+[`ci.yml`](.github/workflows/ci.yml) defines those gates on Windows/Linux and Node 22/24, with frozen dependencies and downloadable test/eval reports. Check [Actions](https://github.com/brendendearie/waylucid-agent-mcp/actions/workflows/ci.yml) for actual remote results; the workflow definition alone is not evidence of a passing hosted run.
 
-```bash
-pnpm agent --role viewer "Maya's webhook is failing — open a P1 case"
-pnpm agent --role supervisor "assign Maya's webhook case to Priya and resolve it"
-```
+The evals demonstrate the checked fixtures—not general model reliability, prompt-injection immunity, or production readiness. Optional live-provider contracts are tested with mocked responses; running the default suite makes no paid model calls.
 
-### MCP Inspector / Cursor
+[Recorded local verification](docs/VERIFICATION.md): 125 tests, 18 fixtures / 66 assertions, typecheck and UI build passed. Re-run against your checkout; this is a dated result, not a permanent badge.
 
-```bash
-pnpm mcp
-```
+## Connect an MCP host
 
-Point a host at `tsx src/mcp/stdio.ts` (or `pnpm mcp`). Set `WAYLUCID_ROLE` in the server env. Logs go to stderr; stdout is JSON-RPC.
+Use `pnpm mcp` as a stdio command from this repository directory. Set `WAYLUCID_ROLE` to `viewer`, `operator`, or `supervisor`; use `viewer` for an initial read-only tour. Stdio protocol traffic stays on stdout; diagnostic logs go to stderr. The harness itself uses an in-process Streamable HTTP client against the same server factory.
 
-The playground also serves Streamable HTTP at `POST /mcp` with `x-waylucid-role: operator`.
+The playground also exposes `/mcp`. Its `x-waylucid-role` header is an intentional **demo selector**, never a verified identity. Missing HTTP roles default to viewer; invalid roles are rejected.
 
-### Optional live model
+## Optional live planning
 
-Default planner is a deterministic mock. That is intentional: the product surface is the tool boundary, and the demo should not depend on a vendor key.
+The default is always `mock`, even when API keys exist in your shell. Explicitly select `WAYLUCID_LLM=openai` with `OPENAI_API_KEY`, or `WAYLUCID_LLM=anthropic` with `ANTHROPIC_API_KEY`. Model overrides are documented in [`.env.example`](.env.example); export variables in your shell (the CLI does not automatically load that file).
 
-```bash
-export WAYLUCID_LLM=openai
-export OPENAI_API_KEY=...
-# or WAYLUCID_LLM=anthropic and ANTHROPIC_API_KEY
-pnpm agent --demo
-```
+This is a **one-shot planner plus deterministic executor**, not a feedback-driven reasoning loop. Live providers receive the utterance and advertised catalog. Their plans still face local validation. Keep prompts synthetic and review costs before enabling them. The browser playground always uses the deterministic planner.
 
-No key? The mock planner still runs the demo path and the evals still gate quality.
+## Read the implementation
 
-## Package layout
+| Start here | Why it matters |
+| --- | --- |
+| [`src/mcp/tools.ts`](src/mcp/tools.ts) | Role-specific schemas and tool contracts |
+| [`src/auth.ts`](src/auth.ts) | Explicit permission matrix and demo principals |
+| [`src/harness/`](src/harness/) | Plan validation, binding, execution, failure reporting |
+| [`src/eval/run.ts`](src/eval/run.ts) | Executable behavioral expectations |
+| [`src/web/`](src/web/) | Local transport boundary |
+| [`tests/`](tests/) | Protocol-level and adversarial regression evidence |
 
-```
-src/auth.ts              roles, advertised catalog, principals
-src/ontology.ts          contacts / cases / tasks
-src/store.ts             in-memory desk
-src/seed.ts              Harborline fixtures
-src/mcp/create-server.ts factory
-src/mcp/tools.ts         permission-aware tool schemas
-src/mcp/stdio.ts         stdio entry
-src/mcp/session.ts       in-process Client used by harness + evals
-src/harness/             mock planner, optional OpenAI/Anthropic, CLI
-src/eval/                golden fixtures + runner
-src/web/                 playground HTTP + /mcp
-playground/              Vite + React UI
-tests/                   store, permissions, protocol, harness, evals
-```
-
-`npm test` and `pnpm eval` are the two commands CI runs after typecheck.
-
-## Scope
-
-This is a small reference, not a framework: one ontology, one server, one harness, one eval set. The store is in-memory and the default planner is a mock so the repo runs without a database or vendor key.
-
-For a production shape, bind the same factory to a real CRM, run the golden set against recorded traces, and keep the tool schemas as the source of truth for what an agent is allowed to do.
-
-## License
-
-MIT. See [CONTRIBUTING.md](CONTRIBUTING.md) for the bar on PRs.
+MIT · [Contributing](CONTRIBUTING.md)

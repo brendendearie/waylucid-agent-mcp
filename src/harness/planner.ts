@@ -1,191 +1,143 @@
-import type { ToolName } from "../auth.ts";
-import { advertisedTools } from "../auth.ts";
+import { advertisedTools, PRINCIPALS, type ToolName } from "../auth.ts";
 import type { Priority, Role } from "../ontology.ts";
 
-export type PlannedCall = {
-  tool: ToolName;
-  arguments: Record<string, unknown>;
-};
-
+export type PlannedCall = { tool: ToolName; arguments: Record<string, unknown> };
 export type Plan = {
   planner: "mock" | "openai" | "anthropic";
   rationale: string;
   calls: PlannedCall[];
+  blockedReason?: string;
+  denied?: ToolName[];
 };
 
-const NAME_HINTS: Array<{ query: string; keys: string[] }> = [
-  { query: "Maya Chen", keys: ["maya"] },
-  { query: "Jordan Hale", keys: ["jordan", "northwind"] },
-  { query: "Priya Shah", keys: ["priya"] },
+const NAME_HINTS = [
+  { query: "Maya Chen", pattern: /\bmaya(?: chen)?\b/i },
+  { query: "Jordan Hale", pattern: /\bjordan(?: hale)?\b|\bnorthwind\b/i },
+  { query: "Priya Shah", pattern: /\bpriya(?: shah)?\b/i },
 ];
 
-function has(text: string, ...needles: string[]): boolean {
-  const hay = text.toLowerCase();
-  return needles.every((n) => hay.includes(n.toLowerCase()));
+function blocked(reason: string, calls: PlannedCall[] = [], denied?: ToolName[]): Plan {
+  return { planner: "mock", rationale: reason, calls, blockedReason: reason, ...(denied?.length ? { denied } : {}) };
 }
 
-function any(text: string, ...needles: string[]): boolean {
-  const hay = text.toLowerCase();
-  return needles.some((n) => hay.includes(n.toLowerCase()));
+function finish(calls: PlannedCall[], role: Role): Plan {
+  const catalog = advertisedTools(role);
+  const denied = calls.filter((call) => !catalog.includes(call.tool)).map((call) => call.tool);
+  if (denied.length) {
+    return blocked(
+      `Dropped ${denied.join(", ")} because role=${role} does not advertise them. No part of this workflow will execute.`,
+      calls.filter((call) => catalog.includes(call.tool)),
+      denied,
+    );
+  }
+  return { planner: "mock", rationale: `Explicit demo command: ${calls.map((call) => call.tool).join(" → ")}.`, calls };
 }
 
-function contactQuery(utterance: string): string | undefined {
-  const hit = NAME_HINTS.find((row) => row.keys.some((key) => utterance.toLowerCase().includes(key)));
-  return hit?.query;
+function contactLookup(text: string): PlannedCall | undefined {
+  const ids = [...text.matchAll(/\bct_[a-z0-9_-]+\b/gi)].map((match) => match[0]);
+  const names = NAME_HINTS.filter((hint) => hint.pattern.test(text));
+  if (ids.length === 1 && names.length === 0) return { tool: "contacts.get", arguments: { contact_id: ids[0] } };
+  if (ids.length === 0 && names.length === 1) return { tool: "contacts.list", arguments: { query: names[0]!.query } };
+  return undefined;
 }
 
-function priorityOf(utterance: string): Priority {
-  if (any(utterance, "p1", "sev1", "sev-1", "page", "outage", "failing", "exhausted")) return "p1";
-  if (any(utterance, "p3", "low", "when you can")) return "p3";
+function priorityOf(text: string): Priority {
+  if (/\b(?:p1|sev-?1)\b/i.test(text)) return "p1";
+  if (/\bp3\b/i.test(text)) return "p3";
   return "p2";
 }
 
-function allowed(role: Role, tool: ToolName): boolean {
-  return advertisedTools(role).includes(tool);
-}
-
-/**
- * Deterministic planner used when no paid LLM key is set.
- * It is intentionally small: the product surface is the MCP tool boundary, not the planner.
- */
+/** A bounded demo grammar, not a general natural-language parser. */
 export function planWithMock(utterance: string, role: Role): Plan {
-  const text = utterance.trim();
-  const calls: PlannedCall[] = [];
-  const contact = contactQuery(text);
-
-  if (any(text, "who am i", "whoami", "what can i")) {
-    calls.push({ tool: "whoami", arguments: {} });
+  const text = utterance.trim().replaceAll("’", "'");
+  if (!text || /\b(?:not|never|don't|dont|cannot|can't|without|avoid|cancel|unless|if|would|could|should|example|pretend|explain|describe)\b/i.test(text)) {
+    return blocked("Use one affirmative demo command. Negated, conditional, and explanatory requests are not executed.");
+  }
+  if (/^(?:who am i|whoami|what can i do)[?.!]?$/i.test(text)) {
+    return finish([{ tool: "whoami", arguments: {} }], role);
   }
 
-  if (any(text, "list contact", "show contact", "find contact") || (contact && any(text, "look up", "find"))) {
-    calls.push({ tool: "contacts.list", arguments: { query: contact ?? text } });
-  }
-
-  if (any(text, "list case", "open cases", "show cases", "what is open")) {
-    const status = any(text, "open") ? "open" : any(text, "resolved") ? "resolved" : undefined;
-    calls.push({ tool: "cases.list", arguments: status ? { status } : {} });
-  }
-
-  if (any(text, "list task", "show task", "follow-up", "follow up") && !any(text, "create", "open a", "add a")) {
-    calls.push({ tool: "tasks.list", arguments: {} });
-  }
-
-  const wantsCase =
-    any(text, "open a case", "open case", "file a case", "create a case", "new case") ||
-    (any(text, "webhook") && any(text, "fail"));
-  if (wantsCase) {
-    if (contact) {
-      calls.push({ tool: "contacts.list", arguments: { query: contact } });
+  // Read commands have their own branch and can never fall through to writes.
+  if (/^(?:list|show|find|get|look up)\b/i.test(text) || /^open cases[?.!]?$/i.test(text)) {
+    const caseId = text.match(/\bcs_[a-z0-9_-]+\b/i)?.[0];
+    const taskId = text.match(/\btk_[a-z0-9_-]+\b/i)?.[0];
+    if (taskId) return finish([{ tool: "tasks.get", arguments: { task_id: taskId } }], role);
+    if (caseId) return finish([{ tool: "cases.get", arguments: { case_id: caseId } }], role);
+    if (/\b(?:tasks?|follow[- ]up)\b/i.test(text)) return finish([{ tool: "tasks.list", arguments: {} }], role);
+    if (/\bcases?\b/i.test(text)) {
+      const status = text.match(/\b(open|waiting|resolved)\b/i)?.[1]?.toLowerCase();
+      const lookup = contactLookup(text);
+      return finish([
+        ...(lookup ? [lookup] : []),
+        { tool: "cases.list", arguments: { ...(status ? { status } : {}), ...(lookup ? { contact_id: "$contact.id" } : {}) } },
+      ], role);
     }
-    calls.push({
+    const lookup = contactLookup(text);
+    if (lookup) return finish([lookup], role);
+    if (/\bcontacts?\b/i.test(text)) return finish([{ tool: "contacts.list", arguments: {} }], role);
+    return blocked("Specify contacts, cases, tasks, or an explicit record ID for this read command.");
+  }
+
+  // Mutation forms consume the complete input. Do not execute an understood
+  // prefix when a qualifier or additional action remains unparsed.
+  const command = text;
+  const isDemo = text.toLowerCase() === DEMO_UTTERANCE.toLowerCase();
+  const shortDemo = text.match(/^(Maya(?: Chen)?|Jordan(?: Hale)?|Priya(?: Shah)?)'s webhook is failing\s*[—–-]\s*(?:open|file|create)\s+a\s+p[123]\s+case[.!]?$/i);
+  const create = text.match(/^(?:open|file|create)\s+(?:a\s+)?(?:p[123]\s+)?case\s+for\s+(Maya(?: Chen)?|Jordan(?: Hale)?|Northwind|Priya(?: Shah)?|ct_[a-z0-9_-]+)(\s+and\s+(?:(?:create|add)\s+)?(?:a\s+)?follow[- ]up task)?[.!]?$/i);
+  if (isDemo || shortDemo || create) {
+    const lookup = contactLookup(isDemo ? "Maya" : shortDemo?.[1] ?? create![1]!);
+    if (!lookup) return blocked("Identify exactly one demo contact by name or contact ID before opening a case.");
+    const title = isDemo || shortDemo ? "Webhook retries exhausted" : "Customer-reported issue";
+    const calls: PlannedCall[] = [lookup, {
       tool: "cases.create",
-      arguments: {
-        contact_id: "$contact.id",
-        title: titleFrom(text) ?? "Customer-reported issue",
-        description: text,
-        priority: priorityOf(text),
-      },
-    });
-  }
-
-  if (any(text, "follow-up", "follow up", "add a task", "create a task", "todo")) {
-    calls.push({
-      tool: "tasks.create",
-      arguments: {
+      arguments: { contact_id: "$contact.id", title, description: text, priority: priorityOf(text) },
+    }];
+    if (isDemo || create?.[2]) {
+      calls.push({ tool: "tasks.create", arguments: {
         case_id: "$case.id",
-        title: taskTitleFrom(text),
-      },
-    });
-  }
-
-  if (any(text, "assign")) {
-    calls.push({ tool: "cases.list", arguments: { status: "open" } });
-    calls.push({
-      tool: "cases.assign",
-      arguments: {
-        case_id: "$case.id",
-        assignee_id: "pr_supervisor",
-      },
-    });
-  }
-
-  if (any(text, "resolve", "close the case", "mark resolved")) {
-    calls.push({ tool: "cases.list", arguments: { status: "open" } });
-    calls.push({
-      tool: "cases.resolve",
-      arguments: {
-        case_id: "$case.id",
-        resolution_code: "done",
-        resolution_summary: "Resolved from the agent harness demo path.",
-      },
-    });
-  }
-
-  if (any(text, "complete the task", "mark the task done", "finish the task")) {
-    calls.push({
-      tool: "tasks.complete",
-      arguments: { task_id: "$task.id" },
-    });
-  }
-
-  if (any(text, "pause", "freeze") && contact) {
-    calls.push({ tool: "contacts.list", arguments: { query: contact } });
-    calls.push({
-      tool: "contacts.update_status",
-      arguments: { contact_id: "$contact.id", status: "paused" },
-    });
-  }
-
-  if (any(text, "internal note", "add a note")) {
-    calls.push({
-      tool: "cases.add_internal_note",
-      arguments: {
-        case_id: "$case.id",
-        body: "Internal note from the harness. Do not send this wording to the customer.",
-      },
-    });
-  }
-
-  if (calls.length === 0) {
-    if (has(text, "maya") || has(text, "jordan") || has(text, "priya")) {
-      calls.push({ tool: "contacts.list", arguments: { query: contact ?? text } });
-      calls.push({ tool: "cases.list", arguments: {} });
-    } else {
-      calls.push({ tool: "whoami", arguments: {} });
-      calls.push({ tool: "cases.list", arguments: { status: "open" } });
+        title: isDemo ? "Confirm the current signing secret is in use" : "Follow up with the customer",
+      } });
     }
+    return finish(calls, role);
   }
 
-  const unique: PlannedCall[] = [];
-  const seen = new Set<string>();
-  for (const call of calls) {
-    const key = `${call.tool}:${JSON.stringify(call.arguments)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(call);
+  if (/^(?:assign|resolve|close)\b/i.test(command)) {
+    const tool = /^assign\b/i.test(command) ? "cases.assign" : "cases.resolve";
+    if (!advertisedTools(role).includes(tool)) {
+      return blocked(`Dropped ${tool} because role=${role} does not advertise it.`, [{ tool: "cases.list", arguments: { status: "open" } }], [tool]);
+    }
+    const assign = command.match(/^assign\s+(?:case\s+)?(cs_[a-z0-9_-]+)\s+to\s+(pr_[a-z0-9_-]+)(\s+and resolve it)?[.!]?$/i);
+    const resolve = command.match(/^(?:resolve|close)\s+(?:case\s+)?(cs_[a-z0-9_-]+)(?:\s+with resolution:\s*(.{3,}))?[.!]?$/i);
+    const id = assign?.[1] ?? resolve?.[1];
+    if (!id) return blocked("Use an explicit case ID: assign cs_webhook to pr_supervisor, or resolve cs_webhook.");
+    if (assign && !Object.values(PRINCIPALS).some((principal) => principal.id === assign[2])) {
+      return blocked("Choose a known principal ID: pr_viewer, pr_operator, or pr_supervisor.");
+    }
+    const calls: PlannedCall[] = [{ tool: "cases.get", arguments: { case_id: id } }];
+    if (assign) calls.push({ tool: "cases.assign", arguments: { case_id: "$case.id", assignee_id: assign[2] } });
+    if (resolve || assign?.[3]) calls.push({ tool: "cases.resolve", arguments: {
+      case_id: "$case.id", resolution_code: "done", resolution_summary: resolve?.[2] ?? "Resolved by explicit supervisor demo command.",
+    } });
+    return finish(calls, role);
   }
 
-  const gated = unique.filter((call) => allowed(role, call.tool));
-  const dropped = unique.filter((call) => !allowed(role, call.tool)).map((call) => call.tool);
-
-  const rationale = dropped.length
-    ? `Mock planner mapped the utterance to ${unique.map((c) => c.tool).join(" → ")}. Dropped ${dropped.join(", ")} because role=${role} does not advertise them.`
-    : `Mock planner mapped the utterance to ${gated.map((c) => c.tool).join(" → ") || "(nothing)"}.`;
-
-  return { planner: "mock", rationale, calls: gated };
-}
-
-function titleFrom(text: string): string | undefined {
-  if (any(text, "webhook")) return "Webhook retries exhausted";
-  if (any(text, "invoice", "bill")) return "Invoice discrepancy";
-  const match = text.match(/case[:\s]+([^.—]+)/i);
-  return match?.[1]?.trim();
-}
-
-function taskTitleFrom(text: string): string {
-  if (any(text, "retry", "secret", "signing")) return "Confirm the current signing secret is in use";
-  if (any(text, "credit")) return "Draft the credit memo";
-  return "Follow up with the customer";
+  const task = command.match(/^(?:create|add)\s+(?:a\s+)?(?:follow[- ]up\s+)?task\s+(?:for|on)\s+(?:case\s+)?(cs_[a-z0-9_-]+)\s*:\s*(.{3,})$/i);
+  if (task) return finish([
+    { tool: "cases.get", arguments: { case_id: task[1] } },
+    { tool: "tasks.create", arguments: { case_id: "$case.id", title: task[2] } },
+  ], role);
+  const complete = command.match(/^(?:complete|finish)\s+(?:task\s+)?(tk_[a-z0-9_-]+)[.!]?$/i);
+  if (complete) return finish([
+    { tool: "tasks.get", arguments: { task_id: complete[1] } },
+    { tool: "tasks.complete", arguments: { task_id: "$task.id" } },
+  ], role);
+  if (/^(?:pause|freeze)\b/i.test(command)) {
+    const pause = command.match(/^(?:pause|freeze)\s+(?:(?:contact|account)\s+)?(Maya(?: Chen)?|Jordan(?: Hale)?|Northwind|Priya(?: Shah)?|ct_[a-z0-9_-]+)[.!]?$/i);
+    const lookup = pause ? contactLookup(pause[1]!) : undefined;
+    if (!lookup) return blocked("Use exactly: pause <contact name or ID>. Qualifiers and additional actions require clarification.");
+    return finish([lookup, { tool: "contacts.update_status", arguments: { contact_id: "$contact.id", status: "paused" } }], role);
+  }
+  return blocked("Unsupported demo command. Try show cases, the supplied demo, resolve cs_webhook, or complete tk_retries.");
 }
 
 export const DEMO_UTTERANCE =
