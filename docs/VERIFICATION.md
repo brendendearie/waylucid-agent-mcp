@@ -22,7 +22,7 @@ Key negative checks: forbidden tools and fields leave state unchanged; malformed
 
 ## Hosted CI receipt
 
-The initial upgrade, commit `5205e36`, passed [all four hosted configurations](https://github.com/brendendearie/waylucid-agent-mcp/actions/runs/35126154842): Windows and Linux with Node 22 and 24. Each ran frozen install, typecheck, tests, evals, and build, and uploaded verification reports. This is a receipt for that specific commit; check the current pull request checks for subsequent commits.
+The merged upgrade, commit `6239570`, passed all four hosted configurations in both its [branch run](https://github.com/brendendearie/waylucid-agent-mcp/actions/runs/35126556408) and [pull-request run](https://github.com/brendendearie/waylucid-agent-mcp/actions/runs/35126561682): Windows and Linux with Node 22 and 24. Each ran frozen install, typecheck, tests, evals, and build, then uploaded verification reports.
 
 ## Not verified
 
