@@ -340,7 +340,7 @@ export default function App() {
       </section>
 
       <footer className="border-t border-line pt-4 text-xs leading-5 text-mute">
-        Five-minute read for hiring managers: <code className="font-mono text-paper">src/mcp/tools.ts</code> (schema
+        Start with <code className="font-mono text-paper">src/mcp/tools.ts</code> (schema
         narrowing), <code className="font-mono text-paper">src/eval/run.ts</code> (golden set), then{" "}
         <code className="font-mono text-paper">pnpm agent --demo</code>. MIT. Built by Brenden Dearie.
       </footer>
