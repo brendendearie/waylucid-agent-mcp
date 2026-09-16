@@ -11,7 +11,6 @@ Keep this repo small enough that someone can read the MCP tool layer in one sitt
 
 ## What does not
 
-- Proprietary production CRM / customer code
 - Real customer data, tokens, or partner names
 - A second ontology, a second agent framework, or a database
 

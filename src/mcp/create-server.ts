@@ -21,7 +21,7 @@ export function createOpsServer(options: CreateServerOptions = {}): McpServer {
     version: SERVER_VERSION,
     description: [
       `Harborline ops desk as ${role}.`,
-      "Fictional seed data for this public reference.",
+      "Harborline is fictional seed data.",
       "Use only advertised tools. Do not invent ids — list or search first.",
       "Internal notes are supervisor-only and must never be paraphrased to a customer.",
     ].join(" "),

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { GOLDEN, runEvalCase, runGoldenSet } from "../src/eval/run.ts";
 
 describe("golden eval set", () => {
-  it("contains the hiring-manager cases", () => {
+  it("covers the golden catalog and permission cases", () => {
     expect(GOLDEN.map((row) => row.id)).toEqual([
       "viewer-catalog",
       "operator-catalog",

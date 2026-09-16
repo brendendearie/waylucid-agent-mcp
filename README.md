@@ -110,7 +110,7 @@ The playground also serves Streamable HTTP at `POST /mcp` with `x-waylucid-role:
 
 ### Optional live model
 
-Default planner is a deterministic mock. That is intentional: the product surface is the tool boundary, and screens should not depend on a vendor key.
+Default planner is a deterministic mock. That is intentional: the product surface is the tool boundary, and the demo should not depend on a vendor key.
 
 ```bash
 export WAYLUCID_LLM=openai
