@@ -141,14 +141,11 @@ tests/                   store, permissions, protocol, harness, evals
 
 `npm test` and `pnpm eval` are the two commands CI runs after typecheck.
 
-## What this is not
+## Scope
 
-- Not CyberCrew, not a bankruptcy/exit story, not a metrics sheet
-- Not a claim about named partners or production traffic
-- Not a framework. One ontology, one server, one harness, one eval set
-- Not production-hardened: in-memory store, mock planner, no auth vendor
+This is a small reference, not a framework: one ontology, one server, one harness, one eval set. The store is in-memory and the default planner is a mock so the repo runs without a database or vendor key.
 
-If you want the production shape, the conversation is: bind this factory to a real CRM, put the same golden set on recorded traces, and keep the schema the source of truth for what an agent is allowed to mean.
+For a production shape, bind the same factory to a real CRM, run the golden set against recorded traces, and keep the tool schemas as the source of truth for what an agent is allowed to do.
 
 ## License
 
