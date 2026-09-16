@@ -2,18 +2,18 @@
 
 Permission-aware MCP tools, a small agent harness, and CI evals for an ops desk.
 
-This is a **sanitized public reference**. It is not LucidDock, not a customer deployment, and not an open-source of proprietary WayLucid code. Harborline is fictional seed data. The point is the shape: how you discover an ontology, ship it as MCP tools the model can actually see, and productize the boundary with evals.
+Harborline is fictional seed data. The point is the shape: discover an ontology, ship it as MCP tools the model can actually see, and productize the boundary with evals.
 
-Built by **Brenden Dearie** as a demoable slice for agentic-experience and FDE conversations.
+Built by **Brenden Dearie**.
 
-## What hiring managers should look at in 5 minutes
+## Start here
 
 1. **`src/mcp/tools.ts`** — tools are the product surface. The catalog is role-gated. `cases.update` is a *different schema* for operator vs supervisor, so the model cannot plan a field it is not allowed to send. The handler still enforces the matrix.
 2. **`src/auth.ts` + `src/seed.ts`** — contacts / cases / tasks, plus data-plane redaction: operators get `hiddenInternalNoteCount`, supervisors get the note body.
 3. **`src/eval/run.ts`** — a golden set that fails if a write leaks into the viewer catalog, if the demo path stops creating a P1 case, or if internal notes spill.
 4. Run `pnpm agent --demo` then `pnpm eval`. That is the whole loop.
 
-If you only have two minutes: switch the playground role from operator to viewer and run the same utterance. Create disappears from the plan.
+Quick check: switch the playground role from operator to viewer and run the same utterance. Create disappears from the plan.
 
 ## Discovery → ship → productize
 
@@ -28,7 +28,7 @@ flowchart LR
 | --- | --- |
 | **Discover** | Three objects an ops desk already has: contacts, cases, tasks. Three roles: viewer, operator, supervisor. Write down what each role must *never* do — assign, resolve, freeze an account, read internal notes — before writing a tool. |
 | **Ship** | A TypeScript MCP server (`@modelcontextprotocol/server` v2) that advertises a coherent toolset over stdio and Streamable HTTP. Schemas are narrowed per role. Resources expose `ops://desk/whoami` and the catalog. Backing store is in-memory so this repo runs without a database or a paid API. |
-| **Productize** | A harness that plans against the *advertised* catalog, not against a hidden admin API. A golden eval script that belongs in CI. A playground so a screen can happen without wiring Cursor or Claude Desktop first. |
+| **Productize** | A harness that plans against the *advertised* catalog, not against a hidden admin API. A golden eval script that belongs in CI. A playground so you can exercise the desk without wiring Cursor or Claude Desktop first. |
 
 The interesting failure mode for agent products is not “the model can’t call tools.” It is “the model planned a privileged write because the tool list lied.” This repo treats that as the product bug.
 

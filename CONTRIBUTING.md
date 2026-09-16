@@ -1,6 +1,6 @@
 # Contributing
 
-This is a **public reference**, not a product dump. Keep it small enough that a hiring manager can read the MCP tool layer in one sitting.
+Keep this repo small enough that someone can read the MCP tool layer in one sitting.
 
 ## What belongs here
 
@@ -11,7 +11,7 @@ This is a **public reference**, not a product dump. Keep it small enough that a 
 
 ## What does not
 
-- Proprietary LucidDock / WayLucid production code
+- Proprietary production CRM / customer code
 - Real customer data, tokens, or partner names
 - A second ontology, a second agent framework, or a database
 

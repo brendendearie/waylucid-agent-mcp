@@ -2,7 +2,7 @@
   "name": "waylucid-agent-mcp",
   "version": "0.1.0",
   "private": true,
-  "description": "Sanitized public reference for permission-aware MCP tools, an agent harness, and CI evals. Not a dump of proprietary WayLucid code.",
+  "description": "Permission-aware MCP tools, an agent harness, and CI evals for an ops desk (Harborline demo).",
   "type": "module",
   "packageManager": "pnpm@10.33.3",
   "engines": {

@@ -149,11 +149,11 @@ export default function App() {
     <div className="mx-auto min-h-screen max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <header className="mb-6 flex flex-col gap-4 border-b border-line pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="font-mono text-[11px] tracking-[0.28em] text-amber uppercase">WayLucid · public reference</p>
+          <p className="font-mono text-[11px] tracking-[0.28em] text-amber uppercase">WayLucid · Harborline</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">Harborline ops desk</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-mute">
             Permission-aware MCP tools for contacts, cases, and tasks. Switch roles. The catalog changes. The server
-            still enforces the matrix. This is a sanitized demo, not LucidDock source.
+            still enforces the matrix. Harborline is fictional seed data.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
